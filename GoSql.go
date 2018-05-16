@@ -25,6 +25,8 @@ var (
 
 func main() {
 
+	defer saveDatabase()
+
 	db = getDatabase()
 
 	port := 3333
@@ -50,7 +52,6 @@ func main() {
 func processConnection(conn net.Conn) {
 
 	defer conn.Close()
-	defer saveDatabase(db)
 
 	var (
 		buf = make([]byte, 1024)
@@ -75,19 +76,23 @@ func processConnection(conn net.Conn) {
 					key := parsedCommand[1]
 					value := parsedCommand[2]
 					handleCreate(key, value)
+					w.Write([]byte("CREATE SUCCESSFUL"))
 					break
 				case "GET":
 					key := parsedCommand[1]
-					handleGet(key)
+					result := handleGet(key)
+					w.Write([]byte(result))
 					break
 				case "UPDATE":
 					key := parsedCommand[1]
 					value := parsedCommand[2]
 					handleUpdate(key, value)
+					w.Write([]byte("CREATE SUCCESSFUL"))
 					break
 				case "DELETE":
 					key := parsedCommand[1]
 					handleDelete(key)
+					w.Write([]byte("DELETE SUCCESSFUL"))
 					break
 				default:
 					w.Write([]byte("Error: Command Not Found"))
@@ -112,13 +117,31 @@ func isTransportOver(data string) (over bool) {
 
 //This function pulls all the data out of the JSON file. It will be inserted into the DB object and manipulated
 func getDatabase() (db database) {
-	//Will read from JSON file here
+	raw, err := ioutil.ReadFile("database.json")
+    if err != nil {
+        fmt.Println(err.Error())
+		os.Exit(1)
+	json.Unmarshal(raw, &db)
 	return db
 }
 
 //This function will be called at the end of the program to update our JSON database file
-func saveDatabase(db database) {
-	//Will write to JSON file here
+func saveDatabase() {
+	//Create output JSON
+	bytes, err := json.Marshal(db)
+    if err != nil {
+        fmt.Println(err.Error())
+		os.Exit(1)
+		
+	//Open Output file
+	fo, err := os.Create("database.json")
+	if err != nil {
+		panic(err)
+	}
+
+	//Write to File
+	if _, err := fo.Write(bytes); err != nil {
+		panic(err)
 }
 
 //Command Functions
@@ -130,7 +153,7 @@ func handleCreate(key string, value string) {
 func handleGet(key string) (result string) {
 	for _, v := range db.entries {
 		if v.key == key {
-			result = v.key + ":" + v.value
+			result = v.value
 		}
 	}
 	return result
