@@ -1,98 +1,157 @@
 package main
 
 import (
-	"fmt"
+	"bufio"
+	"io"
+	"log"
 	"net"
 	"os"
+	"strconv"
+	"strings"
 )
 
-var commandHandlers = map[string]interface{}{
-	"PUT":       handlePut,
-	"GET":       handleGet,
-	"GETLIST":   handleGetlist,
-	"PUTLIST":   handlePutlist,
-	"INCREMENT": handleIncrement,
-	"APPEND":    handleAppend,
-	"DELETE":    handleDelete,
-	"STATS":     handleStats,
+type database struct {
+	entries []dbEntry
 }
 
-type message struct {
-	command   string
-	key       string
-	value     string
-	valueType string
+type dbEntry struct {
+	key   string
+	value string
 }
+
+var (
+	db database
+)
 
 func main() {
 
-	//Import the Database from the json file
-	//getDatabase()
+	db = getDatabase()
 
-	//Run the service/listener
-	service := ":1200"
-	tcpAddr, err := net.ResolveTCPAddr("tcp4", service)
-	checkError(err)
-	listener, err := net.ListenTCP("tcp", tcpAddr)
-	checkError(err)
+	port := 3333
+	listen, err := net.Listen("tcp4", ":"+strconv.Itoa(port))
+	defer listen.Close()
+	if err != nil {
+		log.Fatalf("Socket listen port %d failed,%s", port, err)
+		os.Exit(1)
+	}
+	log.Printf("Begin listen port: %d", port)
+
 	for {
-		conn, err := listener.Accept()
+		conn, err := listen.Accept()
 		if err != nil {
+			log.Fatalln(err)
 			continue
 		}
-		go parseMessage(conn)
+		go processConnection(conn)
 	}
+
 }
 
-//Database Helper Functions
-func getDatabase() {
-	//This will return the json file that is the database. The queries will happen against the object that is returned
-}
+func processConnection(conn net.Conn) {
 
-func parseMessage(conn net.Conn) {
 	defer conn.Close()
-	//var mess message
-	//mess = conn.Read
-	//fmt.Println(mess)
+	defer saveDatabase(db)
+
+	var (
+		buf = make([]byte, 1024)
+		r   = bufio.NewReader(conn)
+		w   = bufio.NewWriter(conn)
+	)
+
+	for {
+		n, err := r.Read(buf)
+		data := string(buf[:n])
+
+		switch err {
+		case io.EOF:
+			break
+		case nil:
+			log.Println("Receive:", data)
+			if isTransportOver(data) {
+				parsedCommand := strings.Fields(data)
+				command := parsedCommand[0]
+				switch command {
+				case "CREATE":
+					key := parsedCommand[1]
+					value := parsedCommand[2]
+					handleCreate(key, value)
+					break
+				case "GET":
+					key := parsedCommand[1]
+					handleGet(key)
+					break
+				case "UPDATE":
+					key := parsedCommand[1]
+					value := parsedCommand[2]
+					handleUpdate(key, value)
+					break
+				case "DELETE":
+					key := parsedCommand[1]
+					handleDelete(key)
+					break
+				default:
+					w.Write([]byte("Error: Command Not Found"))
+				}
+				break
+			}
+
+		default:
+			log.Fatalf("Receive data failed:%s", err)
+			w.Write([]byte("failure"))
+			return
+		}
+		break
+	}
+	w.Flush()
 }
 
-func checkError(err error) {
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Fatal error: %s", err.Error())
-		os.Exit(1)
-		//Need a function here to write the database back to the file
-	}
+func isTransportOver(data string) (over bool) {
+	over = strings.HasSuffix(data, "\r\n\r\n")
+	return
+}
+
+//This function pulls all the data out of the JSON file. It will be inserted into the DB object and manipulated
+func getDatabase() (db database) {
+	//Will read from JSON file here
+	return db
+}
+
+//This function will be called at the end of the program to update our JSON database file
+func saveDatabase(db database) {
+	//Will write to JSON file here
 }
 
 //Command Functions
-func handlePut() {
-
+func handleCreate(key string, value string) {
+	newEntry := dbEntry{key: key, value: value}
+	db.entries = append(db.entries, newEntry)
 }
 
-func handleGet() {
-
+func handleGet(key string) (result string) {
+	for _, v := range db.entries {
+		if v.key == key {
+			result = v.key + ":" + v.value
+		}
+	}
+	return result
 }
 
-func handleGetlist() {
-
+func handleUpdate(key string, value string) {
+	for _, v := range db.entries {
+		if v.key == key {
+			v.value = value
+		}
+	}
 }
 
-func handlePutlist() {
+func handleDelete(key string) {
+	updatedDB := new(database)
+	for _, v := range db.entries {
+		if v.key != key {
+			newEntry := dbEntry{key: v.key, value: v.value}
+			updatedDB.entries = append(updatedDB.entries, newEntry)
+		}
+	}
 
-}
-
-func handleIncrement() {
-
-}
-
-func handleAppend() {
-
-}
-
-func handleDelete() {
-
-}
-
-func handleStats() {
-
+	db = *updatedDB
 }
