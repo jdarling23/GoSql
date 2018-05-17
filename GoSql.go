@@ -2,7 +2,10 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
+	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -10,22 +13,20 @@ import (
 	"strings"
 )
 
-type database struct {
-	entries []dbEntry
+type Database struct {
+	Entries []DbEntry
 }
 
-type dbEntry struct {
-	key   string
-	value string
+type DbEntry struct {
+	Key   string
+	Value string
 }
 
 var (
-	db database
+	db Database
 )
 
 func main() {
-
-	defer saveDatabase()
 
 	db = getDatabase()
 
@@ -51,6 +52,7 @@ func main() {
 
 func processConnection(conn net.Conn) {
 
+	defer saveDatabase()
 	defer conn.Close()
 
 	var (
@@ -87,13 +89,16 @@ func processConnection(conn net.Conn) {
 					key := parsedCommand[1]
 					value := parsedCommand[2]
 					handleUpdate(key, value)
-					w.Write([]byte("CREATE SUCCESSFUL"))
+					w.Write([]byte("UPDATE SUCCESSFUL"))
 					break
 				case "DELETE":
 					key := parsedCommand[1]
 					handleDelete(key)
 					w.Write([]byte("DELETE SUCCESSFUL"))
 					break
+				case "SAVE":
+					saveDatabase()
+					w.Write([]byte("SAVE SUCCESSFUL"))
 				default:
 					w.Write([]byte("Error: Command Not Found"))
 				}
@@ -116,11 +121,13 @@ func isTransportOver(data string) (over bool) {
 }
 
 //This function pulls all the data out of the JSON file. It will be inserted into the DB object and manipulated
-func getDatabase() (db database) {
+func getDatabase() (db Database) {
 	raw, err := ioutil.ReadFile("database.json")
-    if err != nil {
-        fmt.Println(err.Error())
+	if err != nil {
+		fmt.Println(err.Error())
 		os.Exit(1)
+
+	}
 	json.Unmarshal(raw, &db)
 	return db
 }
@@ -129,10 +136,11 @@ func getDatabase() (db database) {
 func saveDatabase() {
 	//Create output JSON
 	bytes, err := json.Marshal(db)
-    if err != nil {
-        fmt.Println(err.Error())
+	if err != nil {
+		fmt.Println(err.Error())
 		os.Exit(1)
-		
+	}
+
 	//Open Output file
 	fo, err := os.Create("database.json")
 	if err != nil {
@@ -142,37 +150,45 @@ func saveDatabase() {
 	//Write to File
 	if _, err := fo.Write(bytes); err != nil {
 		panic(err)
+	}
 }
 
 //Command Functions
 func handleCreate(key string, value string) {
-	newEntry := dbEntry{key: key, value: value}
-	db.entries = append(db.entries, newEntry)
+	newEntry := DbEntry{Key: key, Value: value}
+	db.Entries = append(db.Entries, newEntry)
 }
 
 func handleGet(key string) (result string) {
-	for _, v := range db.entries {
-		if v.key == key {
-			result = v.value
+	for _, v := range db.Entries {
+		if v.Key == key {
+			result = v.Value
 		}
 	}
 	return result
 }
 
 func handleUpdate(key string, value string) {
-	for _, v := range db.entries {
-		if v.key == key {
-			v.value = value
+	updatedDB := new(Database)
+	for _, v := range db.Entries {
+		if v.Key != key {
+			newEntry := DbEntry{Key: v.Key, Value: v.Value}
+			updatedDB.Entries = append(updatedDB.Entries, newEntry)
+		} else {
+			newEntry := DbEntry{Key: key, Value: value}
+			updatedDB.Entries = append(updatedDB.Entries, newEntry)
 		}
 	}
+
+	db = *updatedDB
 }
 
 func handleDelete(key string) {
-	updatedDB := new(database)
-	for _, v := range db.entries {
-		if v.key != key {
-			newEntry := dbEntry{key: v.key, value: v.value}
-			updatedDB.entries = append(updatedDB.entries, newEntry)
+	updatedDB := new(Database)
+	for _, v := range db.Entries {
+		if v.Key != key {
+			newEntry := DbEntry{Key: v.Key, Value: v.Value}
+			updatedDB.Entries = append(updatedDB.Entries, newEntry)
 		}
 	}
 
