@@ -30,13 +30,18 @@ func main() {
 
 	db = getDatabase()
 
+	//Open Port
 	port := 3333
 	listen, err := net.Listen("tcp4", ":"+strconv.Itoa(port))
+
+	//Connection error handing
 	defer listen.Close()
 	if err != nil {
 		log.Fatalf("Socket listen port %d failed,%s", port, err)
 		os.Exit(1)
 	}
+
+	//Begin Listening
 	log.Printf("Begin listen port: %d", port)
 
 	for {
