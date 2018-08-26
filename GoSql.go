@@ -57,15 +57,18 @@ func main() {
 
 func processConnection(conn net.Conn) {
 
+	//Defer Statements
 	defer saveDatabase()
 	defer conn.Close()
 
+	//Create readers and writers
 	var (
 		buf = make([]byte, 1024)
 		r   = bufio.NewReader(conn)
 		w   = bufio.NewWriter(conn)
 	)
 
+	//Begin read
 	for {
 		n, err := r.Read(buf)
 		data := string(buf[:n])
@@ -78,26 +81,22 @@ func processConnection(conn net.Conn) {
 			if isTransportOver(data) {
 				parsedCommand := strings.Fields(data)
 				command := parsedCommand[0]
+				key := parsedCommand[1]
+				value := parsedCommand[2]
 				switch command {
 				case "CREATE":
-					key := parsedCommand[1]
-					value := parsedCommand[2]
 					handleCreate(key, value)
 					w.Write([]byte("CREATE SUCCESSFUL"))
 					break
 				case "GET":
-					key := parsedCommand[1]
 					result := handleGet(key)
 					w.Write([]byte(result))
 					break
 				case "UPDATE":
-					key := parsedCommand[1]
-					value := parsedCommand[2]
 					handleUpdate(key, value)
 					w.Write([]byte("UPDATE SUCCESSFUL"))
 					break
 				case "DELETE":
-					key := parsedCommand[1]
 					handleDelete(key)
 					w.Write([]byte("DELETE SUCCESSFUL"))
 					break
